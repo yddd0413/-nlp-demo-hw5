@@ -1,0 +1,3 @@
+@echo off
+echo Starting NLP Advanced Tasks Demo...
+streamlit run nlp_app.py
