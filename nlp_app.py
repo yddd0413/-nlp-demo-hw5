@@ -1,4 +1,5 @@
 import streamlit as st
+import requests
 import re
 import spacy
 from spacy import displacy
@@ -14,6 +15,35 @@ DISCOURSE_MARKERS = {
     'Comparison': ['but', 'however', 'although', 'though', 'whereas', 'while', 'yet', 'nevertheless'],
     'Expansion': ['and', 'or', 'also', 'moreover', 'furthermore', 'besides', 'in addition', 'additionally']
 }
+
+def fetch_edu_data():
+    """从NeuralEDUSeg获取EDU数据"""
+    urls = [
+        'https://raw.githubusercontent.com/PKU-TANGENT/NeuralEDUSeg/master/data/rst/TRAINING/wsj_0601.out.edus',
+        'https://raw.githubusercontent.com/PKU-TANGENT/NeuralEDUSeg/master/data/rst/TRAINING/wsj_0602.out.edus',
+        'https://raw.githubusercontent.com/PKU-TANGENT/NeuralEDUSeg/master/data/rst/DEV/wsj_0603.out.edus'
+    ]
+    
+    for url in urls:
+        try:
+            response = requests.get(url, timeout=15)
+            if response.status_code == 200:
+                return response.text, url
+        except Exception as e:
+            continue
+    return None, None
+
+def parse_ground_truth(text):
+    """解析.edus文件格式"""
+    lines = text.strip().split('\n')
+    edus = []
+    for line in lines:
+        line = line.strip()
+        if line:
+            edu = re.sub(r'\s+', ' ', line).strip()
+            if edu:
+                edus.append(edu)
+    return edus
 
 def rule_based_edu_segmentation(text):
     doc = nlp(text)
@@ -189,27 +219,51 @@ def main():
     
     with tab1:
         st.header('话语分割 (EDU切分)')
-        st.markdown('**基于规则的EDU切分演示**')
+        st.markdown('**对比 NeuralEDUSeg 真实标注 vs 规则基线**')
         
-        default_text = "The company announced record profits. This was due to strong sales in Europe. However, Asian markets showed weaker performance."
+        col_btn, col_info = st.columns([1, 2])
+        with col_btn:
+            if st.button('📥 加载NeuralEDUSeg数据', key='load_data'):
+                with st.spinner('正在从 GitHub 获取数据...'):
+                    raw_text, url = fetch_edu_data()
+                    
+                    if raw_text:
+                        st.session_state['raw_text'] = raw_text
+                        st.session_state['data_url'] = url
+                        st.success(f'✅ 成功加载: {url.split("/")[-1]}')
+                    else:
+                        st.error('❌ 数据加载失败')
         
-        input_sentence = st.text_area('输入句子（可以是多个句子）', default_text, height=100, key='edu_input')
+        with col_info:
+            if 'data_url' in st.session_state:
+                st.info(f"已加载文件: {st.session_state['data_url'].split('/')[-1]}")
         
-        if st.button('🔍 进行EDU切分', key='analyze_edu'):
-            if input_sentence.strip():
-                clean_text = re.sub(r'\s+', ' ', input_sentence)
-                rule_edus, boundaries = rule_based_edu_segmentation(clean_text)
-                
-                st.subheader('📊 EDU切分结果')
-                st.markdown(f'**检测到 {len(boundaries)} 个边界标记，共切分为 {len(rule_edus)} 个EDU**')
+        if 'raw_text' in st.session_state:
+            raw_text = st.session_state['raw_text']
+            
+            ground_truth_edus = parse_ground_truth(raw_text)
+            
+            full_text = ' '.join(ground_truth_edus[:10])
+            
+            rule_edus, boundaries = rule_based_edu_segmentation(full_text)
+            
+            st.markdown('---')
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.subheader('📏 规则基线切分结果')
+                st.markdown(f'**检测到 {len(boundaries)} 个边界标记**')
                 
                 for i, edu in enumerate(rule_edus, 1):
                     if edu['boundary']:
+                        highlighted_text = edu['text'].replace(
+                            edu['boundary'],
+                            f'<span style="background-color: #FFD700; padding: 2px 6px; border-radius: 3px; font-weight: bold;">{edu["boundary"]}</span>',
+                            1
+                        )
                         st.markdown(
                             f'<div style="border: 2px solid #4CAF50; padding: 10px; margin: 5px 0; border-radius: 5px; background-color: #f1f8e9;">'
-                            f'<strong>EDU {i}:</strong> {edu["text"]} '
-                            f'<span style="background-color: #FFD700; padding: 2px 6px; border-radius: 3px; font-weight: bold;">'
-                            f'🎯 边界: {edu["boundary"]}</span></div>',
+                            f'<strong>EDU {i}:</strong> {highlighted_text}</div>',
                             unsafe_allow_html=True
                         )
                     else:
@@ -218,21 +272,36 @@ def main():
                             f'<strong>EDU {i}:</strong> {edu["text"]}</div>',
                             unsafe_allow_html=True
                         )
+            
+            with col2:
+                st.subheader('🎯 NeuralEDUSeg 真实标注')
+                st.markdown(f'**共 {len(ground_truth_edus[:10])} 个 EDU**')
                 
-                with st.expander('ℹ️ 切分规则说明'):
-                    st.markdown("""
-                    **启发式规则：**
-                    1. 句末标点 (. ! ? ;) 后切分
-                    2. 从属连词 (although, because, since等) 前切分
-                    3. 依存关系为 'mark' 的动词前切分
-                    
-                    **边界标记说明：**
-                    - 🎯 黄色标签表示检测到的边界词
-                    - 绿色边框表示以边界词结束的EDU
-                    - 蓝色边框表示最后一个EDU（无明确边界）
-                    """)
-            else:
-                st.warning('请输入句子')
+                for i, edu in enumerate(ground_truth_edus[:10], 1):
+                    st.markdown(
+                        f'<div style="border: 2px solid #9C27B0; padding: 10px; margin: 5px 0; border-radius: 5px; background-color: #f3e5f5;">'
+                        f'<strong>EDU {i}:</strong> {edu}</div>',
+                        unsafe_allow_html=True
+                    )
+            
+            with st.expander('📊 查看完整对比'):
+                st.markdown('**规则基线 EDU 总数:** {}'.format(len(rule_edus)))
+                st.markdown('**真实标注 EDU 总数:** {}'.format(len(ground_truth_edus)))
+            
+            with st.expander('ℹ️ 切分规则说明'):
+                st.markdown("""
+                **启发式规则：**
+                1. **句末标点** (. ! ? ;) 后切分
+                2. **从属连词** (although, because, since, while, when, if, unless) 前切分
+                3. **依存关系** 为 'mark' 且中心词为动词时切分
+                
+                **边界词高亮：** 黄色背景标记检测到的边界词
+                
+                **差异分析：**
+                - 规则方法倾向于过度切分或切分不足
+                - 真实标注考虑语义完整性和话语结构
+                - 神经网络模型能学习更复杂的边界特征
+                """)
     
     with tab2:
         st.header('浅层篇章分析')
