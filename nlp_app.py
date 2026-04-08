@@ -7,12 +7,7 @@ import torch
 import warnings
 warnings.filterwarnings('ignore')
 
-try:
-    nlp = spacy.load('en_core_web_sm')
-except OSError:
-    import subprocess
-    subprocess.run(['python', '-m', 'spacy', 'download', 'en_core_web_sm'], check=True)
-    nlp = spacy.load('en_core_web_sm')
+nlp = spacy.load('en_core_web_sm')
 
 DISCOURSE_MARKERS = {
     'Temporal': ['when', 'after', 'before', 'while', 'since', 'until', 'as', 'once', 'whenever'],
