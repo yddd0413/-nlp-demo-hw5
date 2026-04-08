@@ -317,17 +317,25 @@ def main():
             if markers:
                 st.subheader('📊 连接词识别结果')
                 
-                highlighted_sentence = sentence
-                offset = 0
+                markers_sorted = sorted(markers, key=lambda x: x['start'], reverse=True)
                 
-                for marker in reversed(markers):
-                    original_text = sentence[marker['start']:marker['end']]
-                    highlighted = f'<strong style="color: white; background-color: #FF5722; padding: 2px 8px; border-radius: 4px;">{original_text}</strong> <span style="background-color: #FFCDD2; padding: 2px 6px; border-radius: 3px; font-size: 12px;">[{marker["category"].upper()}]</span>'
+                result_parts = []
+                last_pos = len(sentence)
+                
+                for marker in markers_sorted:
+                    result_parts.insert(0, sentence[marker['end']:last_pos])
                     
-                    start = marker['start'] + offset
-                    end = marker['end'] + offset
-                    highlighted_sentence = highlighted_sentence[:start] + highlighted + highlighted_sentence[end:]
-                    offset += len(highlighted) - (marker['end'] - marker['start'])
+                    category_badge = f'<span style="background-color: #FFCDD2; padding: 2px 6px; border-radius: 3px; font-size: 12px; margin-left: 4px;">[{marker["category"].upper()}]</span>'
+                    
+                    original = sentence[marker['start']:marker['end']]
+                    highlighted = f'<strong style="color: white; background-color: #FF5722; padding: 2px 8px; border-radius: 4px;">{original}</strong>{category_badge}'
+                    
+                    result_parts.insert(0, highlighted)
+                    last_pos = marker['start']
+                
+                result_parts.insert(0, sentence[0:last_pos])
+                
+                highlighted_sentence = ''.join(result_parts)
                 
                 st.markdown(f'<div style="background-color: #F5F5F5; padding: 15px; border-radius: 5px; line-height: 2;">{highlighted_sentence}</div>', unsafe_allow_html=True)
                 
