@@ -1,5 +1,4 @@
 import streamlit as st
-import requests
 import re
 import spacy
 from spacy import displacy
@@ -15,33 +14,6 @@ DISCOURSE_MARKERS = {
     'Comparison': ['but', 'however', 'although', 'though', 'whereas', 'while', 'yet', 'nevertheless'],
     'Expansion': ['and', 'or', 'also', 'moreover', 'furthermore', 'besides', 'in addition', 'additionally']
 }
-
-def fetch_edu_data():
-    urls = [
-        'https://raw.githubusercontent.com/PKU-TANGENT/NeuralEDUSeg/master/data/rst/wsj_1112.out',
-        'https://raw.githubusercontent.com/PKU-TANGENT/NeuralEDUSeg/master/data/rst/wsj_1113.out',
-        'https://raw.githubusercontent.com/PKU-TANGENT/NeuralEDUSeg/master/data/rst/wsj_1114.out'
-    ]
-    
-    for url in urls:
-        try:
-            response = requests.get(url, timeout=10)
-            if response.status_code == 200:
-                return response.text, url
-        except:
-            continue
-    return None, None
-
-def parse_ground_truth(text):
-    lines = text.strip().split('\n')
-    edus = []
-    for line in lines:
-        line = line.strip()
-        if line and not line.startswith('#'):
-            edu = re.sub(r'\s+', ' ', line).strip()
-            if edu:
-                edus.append(edu)
-    return edus
 
 def rule_based_edu_segmentation(text):
     doc = nlp(text)
@@ -217,69 +189,50 @@ def main():
     
     with tab1:
         st.header('话语分割 (EDU切分)')
-        st.markdown('**基于 NeuralEDUSeg 数据集与规则基线对比**')
+        st.markdown('**基于规则的EDU切分演示**')
         
-        if st.button('📥 加载示例数据', key='load_data'):
-            with st.spinner('正在从 GitHub 获取数据...'):
-                raw_text, url = fetch_edu_data()
+        default_text = "The company announced record profits. This was due to strong sales in Europe. However, Asian markets showed weaker performance."
+        
+        input_sentence = st.text_area('输入句子（可以是多个句子）', default_text, height=100, key='edu_input')
+        
+        if st.button('🔍 进行EDU切分', key='analyze_edu'):
+            if input_sentence.strip():
+                clean_text = re.sub(r'\s+', ' ', input_sentence)
+                rule_edus, boundaries = rule_based_edu_segmentation(clean_text)
                 
-                if raw_text:
-                    st.session_state['raw_text'] = raw_text
-                    st.success(f'✅ 成功加载数据: {url.split("/")[-1]}')
-                else:
-                    st.error('❌ 数据加载失败，使用示例数据')
-                    st.session_state['raw_text'] = """The company announced record profits. 
-                        This was due to strong sales in Europe. 
-                        However, Asian markets showed weaker performance."""
-        
-        if 'raw_text' in st.session_state:
-            raw_text = st.session_state['raw_text']
-            
-            ground_truth_edus = parse_ground_truth(raw_text)
-            
-            clean_text = re.sub(r'\s+', ' ', raw_text)
-            rule_edus, boundaries = rule_based_edu_segmentation(clean_text)
-            
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                st.subheader('📏 规则基线切分结果')
-                st.markdown(f'**检测到 {len(boundaries)} 个边界标记**')
+                st.subheader('📊 EDU切分结果')
+                st.markdown(f'**检测到 {len(boundaries)} 个边界标记，共切分为 {len(rule_edus)} 个EDU**')
                 
                 for i, edu in enumerate(rule_edus, 1):
                     if edu['boundary']:
                         st.markdown(
-                            f'<div style="border: 2px solid #4CAF50; padding: 10px; margin: 5px 0; border-radius: 5px;">'
+                            f'<div style="border: 2px solid #4CAF50; padding: 10px; margin: 5px 0; border-radius: 5px; background-color: #f1f8e9;">'
                             f'<strong>EDU {i}:</strong> {edu["text"]} '
-                            f'<span style="background-color: #FFD700; padding: 2px 6px; border-radius: 3px;">'
+                            f'<span style="background-color: #FFD700; padding: 2px 6px; border-radius: 3px; font-weight: bold;">'
                             f'🎯 边界: {edu["boundary"]}</span></div>',
                             unsafe_allow_html=True
                         )
                     else:
                         st.markdown(
-                            f'<div style="border: 2px solid #2196F3; padding: 10px; margin: 5px 0; border-radius: 5px;">'
+                            f'<div style="border: 2px solid #2196F3; padding: 10px; margin: 5px 0; border-radius: 5px; background-color: #e3f2fd;">'
                             f'<strong>EDU {i}:</strong> {edu["text"]}</div>',
                             unsafe_allow_html=True
                         )
-            
-            with col2:
-                st.subheader('🎯 NeuralEDUSeg 真实标注')
-                st.markdown(f'**共 {len(ground_truth_edus)} 个 EDU**')
                 
-                for i, edu in enumerate(ground_truth_edus, 1):
-                    st.markdown(
-                        f'<div style="border: 2px solid #9C27B0; padding: 10px; margin: 5px 0; border-radius: 5px;">'
-                        f'<strong>EDU {i}:</strong> {edu}</div>',
-                        unsafe_allow_html=True
-                    )
-            
-            with st.expander('ℹ️ 切分规则说明'):
-                st.markdown("""
-                **启发式规则：**
-                1. 句末标点 (. ! ? ;) 后切分
-                2. 从属连词 (although, because, since等) 前切分
-                3. 依存关系为 'mark' 的动词前切分
-                """)
+                with st.expander('ℹ️ 切分规则说明'):
+                    st.markdown("""
+                    **启发式规则：**
+                    1. 句末标点 (. ! ? ;) 后切分
+                    2. 从属连词 (although, because, since等) 前切分
+                    3. 依存关系为 'mark' 的动词前切分
+                    
+                    **边界标记说明：**
+                    - 🎯 黄色标签表示检测到的边界词
+                    - 绿色边框表示以边界词结束的EDU
+                    - 蓝色边框表示最后一个EDU（无明确边界）
+                    """)
+            else:
+                st.warning('请输入句子')
     
     with tab2:
         st.header('浅层篇章分析')
