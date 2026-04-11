@@ -3,7 +3,6 @@ import requests
 import re
 import spacy
 from spacy import displacy
-import torch
 import warnings
 warnings.filterwarnings('ignore')
 
